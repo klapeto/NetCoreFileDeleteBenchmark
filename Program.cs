@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using McMaster.Extensions.CommandLineUtils;
 
 namespace NetCoreFileDeleteBenchmark
@@ -29,8 +30,8 @@ namespace NetCoreFileDeleteBenchmark
 		[Option(Template = "-n <number>", Description = "The number of files to use (Default = 100)")]
 		private int _nFiles { get; set; } = 100;
 
-		[Option(Template = "-a", Description = "Use async operations (Default = false)")]
-		private bool _async { get; set; }
+		[Option(Template = "-a", Description = "Use multiple threads for concurrent deletes (Default = false)")]
+		private bool _multipleThreads { get; set; }
 
 		[Option(Template = "-s <size>", Description = "The file size to use in bytes (Default = 1Kib)")]
 		private int _fileSize { get; set; } = 1024;
@@ -38,6 +39,9 @@ namespace NetCoreFileDeleteBenchmark
 
 		[Option(Template = "-t", Description = "Do not use Task for async operations (Default = false)")]
 		private bool _noUseTask { get; set; }
+
+		[Option(Template = "-w", Description = "Use async/await")]
+		private bool _asyncMethods { get; set; }
 
 		private List<DeleteThread> _threads = new List<DeleteThread>();
 		private List<string> _files = new List<string>();
@@ -60,7 +64,7 @@ namespace NetCoreFileDeleteBenchmark
 
 			CreateFiles();
 
-			if (_async)
+			if (_multipleThreads)
 			{
 				Console.WriteLine("Using multiple threads for deleting the files");
 				Console.WriteLine("Deleting files...");
@@ -74,7 +78,10 @@ namespace NetCoreFileDeleteBenchmark
 				Console.WriteLine("Using single thread for deleting the files");
 				Console.WriteLine("Deleting files...");
 				_stopwatch.Start();
-				SingleThreadExecution();
+				if (_asyncMethods)
+					SingleThreadExecutionAsync().GetAwaiter().GetResult();
+				else 
+					SingleThreadExecution();
 				_stopwatch.Stop();
 			}
 
@@ -161,6 +168,21 @@ namespace NetCoreFileDeleteBenchmark
 				try
 				{
 					System.IO.File.Delete(item);
+				}
+				catch (System.Exception e)
+				{
+					Console.Error.WriteLine($"Failed to delete file: {Environment.NewLine}{e}");
+				}
+			}
+		}
+
+		private async Task SingleThreadExecutionAsync()
+		{
+			foreach (var item in _files)
+			{
+				try
+				{
+					await Task.Run(() => System.IO.File.Delete(item));
 				}
 				catch (System.Exception e)
 				{
