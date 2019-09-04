@@ -22,7 +22,7 @@ namespace NetCoreFileDeleteBenchmark
 {
 	public class TaskThread : DeleteThread
 	{
-		private Task _task;
+		private readonly Task _task;
 
 		public TaskThread(List<string> paths) : base(paths)
 		{

@@ -25,38 +25,38 @@ using McMaster.Extensions.CommandLineUtils;
 
 namespace NetCoreFileDeleteBenchmark
 {
-	class Program
+	internal class Program
 	{
 		[Option(Template = "-n <number>", Description = "The number of files to use (Default = 100)")]
-		private int _nFiles { get; set; } = 100;
+		private int NFiles { get; set; } = 100;
 
 		[Option(Template = "-a", Description = "Use multiple threads for concurrent deletes (Default = false)")]
-		private bool _multipleThreads { get; set; }
+		private bool MultipleThreads { get; set; }
 
 		[Option(Template = "-s <size>", Description = "The file size to use in bytes (Default = 1Kib)")]
-		private int _fileSize { get; set; } = 1024;
+		private int FileSize { get; set; } = 1024;
 
 
 		[Option(Template = "-t", Description = "Do not use Task for async operations (Default = false)")]
-		private bool _noUseTask { get; set; }
+		private bool NoUseTask { get; set; }
 
 		[Option(Template = "-w", Description = "Use async/await")]
-		private bool _asyncMethods { get; set; }
+		private bool AsyncMethods { get; set; }
 
-		private List<DeleteThread> _threads = new List<DeleteThread>();
-		private List<string> _files = new List<string>();
+		private readonly List<DeleteThread> _threads = new List<DeleteThread>();
+		private readonly List<string> _files = new List<string>();
 		private string _tempDirectory;
-		private Stopwatch _stopwatch = new Stopwatch();
+		private readonly Stopwatch _stopwatch = new Stopwatch();
 
 		private void OnExecute()
 		{
-			if (_nFiles < 1)
+			if (NFiles < 1)
 			{
 				Console.Error.WriteLine("The number of files should be at least 1");
 				return;
 			}
 
-			if (_fileSize < 1)
+			if (FileSize < 1)
 			{
 				Console.Error.WriteLine("The file size should be at least 1 byte");
 				return;
@@ -64,7 +64,7 @@ namespace NetCoreFileDeleteBenchmark
 
 			CreateFiles();
 
-			if (_multipleThreads)
+			if (MultipleThreads)
 			{
 				Console.WriteLine("Using multiple threads for deleting the files");
 				Console.WriteLine("Deleting files...");
@@ -78,9 +78,9 @@ namespace NetCoreFileDeleteBenchmark
 				Console.WriteLine("Using single thread for deleting the files");
 				Console.WriteLine("Deleting files...");
 				_stopwatch.Start();
-				if (_asyncMethods)
+				if (AsyncMethods)
 					SingleThreadExecutionAsync().GetAwaiter().GetResult();
-				else 
+				else
 					SingleThreadExecution();
 				_stopwatch.Stop();
 			}
@@ -91,15 +91,15 @@ namespace NetCoreFileDeleteBenchmark
 
 		private void PrepareThreads()
 		{
-			var threadFactory = _noUseTask ?
-							(Func<List<string>, DeleteThread>)((paths) => new NativeThread(paths)) :
-							(Func<List<string>, DeleteThread>)((paths) => new TaskThread(paths));
+			var threadFactory = NoUseTask ?
+							(Func<List<string>, DeleteThread>)(paths => new NativeThread(paths)) :
+							paths => new TaskThread(paths);
 
 
 			var cpus = Environment.ProcessorCount;
 
 			var filesPerCpu = _files.Count / cpus;
-			for (int i = 0; i < cpus; i++)
+			for (var i = 0; i < cpus; i++)
 			{
 				_threads.Add(threadFactory(_files.Skip(i * filesPerCpu).Take(filesPerCpu).ToList()));
 			}
@@ -111,7 +111,7 @@ namespace NetCoreFileDeleteBenchmark
 			{
 				Directory.Delete(_tempDirectory, recursive: true);
 			}
-			catch (System.Exception e)
+			catch (Exception e)
 			{
 				Console.Error.WriteLine($"Failed to delete directory: '{_tempDirectory}' {Environment.NewLine}{e}");
 			}
@@ -134,31 +134,52 @@ namespace NetCoreFileDeleteBenchmark
 		{
 			_tempDirectory = Path.Join(Path.GetTempPath(), "NetCoreDeleteBenchmark");
 			if (!Directory.Exists(_tempDirectory)) Directory.CreateDirectory(_tempDirectory);
-			var bytes = new byte[_fileSize];
-			Console.WriteLine($"Creating {_nFiles} temporary files of size: {_fileSize} bytes...");
-			_stopwatch.Start();
-			for (int i = 0; i < _nFiles; i++)
+			var bytes = new byte[FileSize];
+			Console.WriteLine($"Creating {NFiles} temporary files of size: {FileSize} bytes to : '{_tempDirectory}'");
+
+			var cpus = Environment.ProcessorCount;
+			var threads = new List<Task>();
+
+			for (var i = 0; i < NFiles; i++)
 			{
 				var filePath = Path.Join(_tempDirectory, $"{i}");
-
-				try
-				{
-					using (var fs = new FileStream(filePath, FileMode.Create))
-					{
-						fs.Write(bytes, 0, bytes.Length);
-						fs.Flush();
-					}
-					//System.IO.File.WriteAllBytes(filePath, bytes);
-					_files.Add(filePath);
-				}
-				catch (System.Exception e)
-				{
-					Console.Error.WriteLine($"Failed to write file: {Environment.NewLine}{e}");
-				}
+				_files.Add(filePath);
 			}
+
+			var filesPerCpu = _files.Count / cpus;
+			_stopwatch.Start();
+
+			for (var i = 0; i < cpus; i++)
+			{
+				threads.Add(CreateFilesAsync(_files.Skip(i * filesPerCpu).Take(filesPerCpu).ToList(), bytes));
+			}
+
+			Task.WaitAll(threads.ToArray());
 			_stopwatch.Stop();
-			Console.WriteLine($"Writen {_files.Count} files in {_stopwatch.ElapsedMilliseconds:F2} ms");
+			Console.WriteLine($"Written {_files.Count} files in {_stopwatch.ElapsedMilliseconds:F2} ms");
 			_stopwatch.Reset();
+		}
+
+		private static Task CreateFilesAsync(IList<string> files, byte[] data)
+		{
+			return Task.Factory.StartNew(() =>
+			{
+				foreach (var file in files)
+				{
+					try
+					{
+						using (var fs = new FileStream(file, FileMode.Create))
+						{
+							fs.Write(data, 0, data.Length);
+							fs.Flush();
+						}
+					}
+					catch (Exception e)
+					{
+						Console.Error.WriteLine($"Failed to write file: {Environment.NewLine}{e}");
+					}
+				}
+			}, TaskCreationOptions.LongRunning);
 		}
 
 		private void SingleThreadExecution()
@@ -167,9 +188,9 @@ namespace NetCoreFileDeleteBenchmark
 			{
 				try
 				{
-					System.IO.File.Delete(item);
+					File.Delete(item);
 				}
-				catch (System.Exception e)
+				catch (Exception e)
 				{
 					Console.Error.WriteLine($"Failed to delete file: {Environment.NewLine}{e}");
 				}
@@ -182,15 +203,15 @@ namespace NetCoreFileDeleteBenchmark
 			{
 				try
 				{
-					await Task.Run(() => System.IO.File.Delete(item));
+					await Task.Run(() => File.Delete(item));
 				}
-				catch (System.Exception e)
+				catch (Exception e)
 				{
 					Console.Error.WriteLine($"Failed to delete file: {Environment.NewLine}{e}");
 				}
 			}
 		}
 
-		static int Main(string[] args) => CommandLineApplication.Execute<Program>(args);
+		private static int Main(string[] args) => CommandLineApplication.Execute<Program>(args);
 	}
 }

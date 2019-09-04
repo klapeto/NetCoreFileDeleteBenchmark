@@ -22,7 +22,7 @@ namespace NetCoreFileDeleteBenchmark
 {
 	public abstract class DeleteThread
 	{
-		private List<string> _filePaths;
+		private readonly List<string> _filePaths;
 		protected DeleteThread(List<string> filePaths) => _filePaths = filePaths;
 
 		protected void Process()
@@ -33,7 +33,7 @@ namespace NetCoreFileDeleteBenchmark
 				{
 					System.IO.File.Delete(file);
 				}
-				catch (System.Exception e)
+				catch (Exception e)
 				{
 					Console.WriteLine($"Failed to delete file: '{file}'{Environment.NewLine}{e}");
 				}

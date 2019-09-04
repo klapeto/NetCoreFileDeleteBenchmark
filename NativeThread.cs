@@ -22,7 +22,7 @@ namespace NetCoreFileDeleteBenchmark
 {
 	public class NativeThread : DeleteThread
 	{
-		private Thread _thread;
+		private readonly Thread _thread;
 
 		public NativeThread(List<string> paths) : base(paths) => _thread = new Thread(Process);
 
